@@ -1,7 +1,4 @@
-# Digital Alpha Assessment
-# Digital Alpha Assessment
-
-A full-stack transaction dashboard with analytics and rewards, built with React, Vite, FastAPI, and PostgreSQL.
+Full-stack transaction dashboard with analytics and rewards, built with React, Vite, FastAPI, and PostgreSQL.
 
 ## Features
 
