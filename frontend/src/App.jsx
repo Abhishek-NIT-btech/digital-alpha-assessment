@@ -7,6 +7,8 @@ import {
   IndianRupee,
   Search,
   XCircle,
+  Gift,
+  Coins,
 } from "lucide-react";
 import {
   Bar,
@@ -46,7 +48,6 @@ function App() {
   const [status, setStatus] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
 
-  // Date filters
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -56,8 +57,19 @@ function App() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  // Rewards
+  const [rewards, setRewards] = useState([]);
+  const [rewardBalance, setRewardBalance] = useState(null);
+  const [loadingRewards, setLoadingRewards] = useState(true);
+  const [redeemingReward, setRedeemingReward] = useState(null);
+  const [rewardMessage, setRewardMessage] = useState("");
+  const [rewardError, setRewardError] = useState("");
+  const [selectedReward, setSelectedReward] = useState(null);
+
   useEffect(() => {
     loadSummary();
+    loadRewards();
+    loadRewardBalance();
   }, []);
 
   useEffect(() => {
@@ -143,6 +155,64 @@ function App() {
       setError("Unable to load transactions.");
     } finally {
       setLoadingTransactions(false);
+    }
+  }
+
+  async function loadRewards() {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/rewards`
+      );
+
+      setRewards(response.data.items || []);
+    } catch (err) {
+      console.error(err);
+      setRewardError("Unable to load rewards.");
+    }
+  }
+
+  async function loadRewardBalance() {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/rewards/balance`
+      );
+
+      setRewardBalance(response.data);
+    } catch (err) {
+      console.error(err);
+      setRewardError("Unable to load reward balance.");
+    } finally {
+      setLoadingRewards(false);
+    }
+  }
+
+  async function redeemReward(rewardId) {
+    try {
+      setRedeemingReward(rewardId);
+      setRewardMessage("");
+      setRewardError("");
+
+      const response = await axios.post(
+        `${API_BASE_URL}/api/rewards/redeem`,
+        {
+          reward_id: rewardId,
+        }
+      );
+
+      setRewardMessage(response.data.message);
+      setSelectedReward(null);
+
+      await loadRewardBalance();
+    } catch (err) {
+      console.error(err);
+
+      const message =
+        err.response?.data?.detail ||
+        "Unable to redeem this reward.";
+
+      setRewardError(message);
+    } finally {
+      setRedeemingReward(null);
     }
   }
 
@@ -288,6 +358,114 @@ function App() {
           />
         </section>
 
+        {/* Rewards */}
+        <section className="card rewards-card">
+          <div className="card-heading rewards-heading">
+            <div>
+              <h2>
+                <Gift size={20} />
+                Rewards
+              </h2>
+              <p>
+                Redeem your earned coins for rewards.
+              </p>
+            </div>
+
+            <div className="coin-balance">
+              <Coins size={19} />
+
+              <div>
+                <span>Available Coins</span>
+
+                <strong>
+                  {loadingRewards
+                    ? "..."
+                    : (
+                        rewardBalance?.balance || 0
+                      ).toLocaleString("en-IN")}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {rewardMessage && (
+            <div className="reward-success">
+              {rewardMessage}
+            </div>
+          )}
+
+          {rewardError && (
+            <div className="reward-error">
+              {rewardError}
+            </div>
+          )}
+
+          <div className="rewards-grid">
+            {loadingRewards ? (
+              <div className="loading">
+                Loading rewards...
+              </div>
+            ) : rewards.length === 0 ? (
+              <div className="empty-state">
+                No rewards available.
+              </div>
+            ) : (
+              rewards.map((reward) => {
+                const canRedeem =
+                  (rewardBalance?.balance || 0) >=
+                  reward.coin_cost;
+
+                const isRedeeming =
+                  redeemingReward === reward.id;
+
+                return (
+                  <div
+                    className="reward-item"
+                    key={reward.id}
+                  >
+                    <div className="reward-icon">
+                      <Gift size={22} />
+                    </div>
+
+                    <div className="reward-info">
+                      <strong>{reward.name}</strong>
+
+                      <span>
+                        {reward.description}
+                      </span>
+
+                      <div className="reward-cost">
+                        <Coins size={15} />
+                        {reward.coin_cost.toLocaleString(
+                          "en-IN"
+                        )}{" "}
+                        coins
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="redeem-button"
+                      disabled={
+                        !canRedeem || isRedeeming
+                      }
+                      onClick={() =>
+                        setSelectedReward(reward)
+                      }
+                    >
+                      {isRedeeming
+                        ? "Redeeming..."
+                        : canRedeem
+                          ? "Redeem"
+                          : "Not enough coins"}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+
         {/* Charts */}
         <section className="charts-grid">
           <div className="card chart-card">
@@ -300,11 +478,15 @@ function App() {
 
             <div className="chart-container">
               {loadingSummary ? (
-                <div className="loading">Loading chart...</div>
+                <div className="loading">
+                  Loading chart...
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={summary?.category_breakdown || []}
+                    data={
+                      summary?.category_breakdown || []
+                    }
                   >
                     <CartesianGrid strokeDasharray="3 3" />
 
@@ -344,17 +526,24 @@ function App() {
             <div className="card-heading">
               <div>
                 <h2>Payment Methods</h2>
-                <p>Transaction activity by payment method</p>
+                <p>
+                  Transaction activity by payment method
+                </p>
               </div>
             </div>
 
             <div className="chart-container">
               {loadingSummary ? (
-                <div className="loading">Loading chart...</div>
+                <div className="loading">
+                  Loading chart...
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={summary?.payment_method_breakdown || []}
+                    data={
+                      summary?.payment_method_breakdown ||
+                      []
+                    }
                   >
                     <CartesianGrid strokeDasharray="3 3" />
 
@@ -393,37 +582,49 @@ function App() {
           <div className="card-heading">
             <div>
               <h2>Top Merchants</h2>
-              <p>Merchants ranked by transaction activity</p>
+              <p>
+                Merchants ranked by transaction activity
+              </p>
             </div>
           </div>
 
           <div className="merchant-grid">
             {loadingSummary ? (
-              <div className="loading">Loading merchants...</div>
+              <div className="loading">
+                Loading merchants...
+              </div>
             ) : (
-              summary?.top_merchants?.map((merchant, index) => (
-                <div
-                  className="merchant-item"
-                  key={merchant.merchant}
-                >
-                  <div className="merchant-rank">
-                    {index + 1}
+              summary?.top_merchants?.map(
+                (merchant, index) => (
+                  <div
+                    className="merchant-item"
+                    key={merchant.merchant}
+                  >
+                    <div className="merchant-rank">
+                      {index + 1}
+                    </div>
+
+                    <div className="merchant-info">
+                      <strong>
+                        {merchant.merchant}
+                      </strong>
+
+                      <span>
+                        {merchant.count.toLocaleString(
+                          "en-IN"
+                        )}{" "}
+                        transactions
+                      </span>
+                    </div>
+
+                    <strong>
+                      {formatCurrency(
+                        merchant.amount
+                      )}
+                    </strong>
                   </div>
-
-                  <div className="merchant-info">
-                    <strong>{merchant.merchant}</strong>
-
-                    <span>
-                      {merchant.count.toLocaleString("en-IN")}{" "}
-                      transactions
-                    </span>
-                  </div>
-
-                  <strong>
-                    {formatCurrency(merchant.amount)}
-                  </strong>
-                </div>
-              ))
+                )
+              )
             )}
           </div>
         </section>
@@ -464,9 +665,13 @@ function App() {
 
             <select
               value={category}
-              onChange={handleFilterChange(setCategory)}
+              onChange={handleFilterChange(
+                setCategory
+              )}
             >
-              <option value="">All categories</option>
+              <option value="">
+                All categories
+              </option>
 
               {categories.map((item) => (
                 <option key={item} value={item}>
@@ -479,15 +684,28 @@ function App() {
               value={status}
               onChange={handleFilterChange(setStatus)}
             >
-              <option value="">All statuses</option>
-              <option value="SUCCESS">Success</option>
-              <option value="FAILED">Failed</option>
-              <option value="PENDING">Pending</option>
+              <option value="">
+                All statuses
+              </option>
+
+              <option value="SUCCESS">
+                Success
+              </option>
+
+              <option value="FAILED">
+                Failed
+              </option>
+
+              <option value="PENDING">
+                Pending
+              </option>
             </select>
 
             <select
               value={paymentMethod}
-              onChange={handleFilterChange(setPaymentMethod)}
+              onChange={handleFilterChange(
+                setPaymentMethod
+              )}
             >
               <option value="">
                 All payment methods
@@ -500,7 +718,6 @@ function App() {
               ))}
             </select>
 
-            {/* Date From */}
             <input
               type="date"
               value={dateFrom}
@@ -509,7 +726,6 @@ function App() {
               title="Start date"
             />
 
-            {/* Date To */}
             <input
               type="date"
               value={dateTo}
@@ -522,9 +738,18 @@ function App() {
               value={sortBy}
               onChange={handleSortChange}
             >
-              <option value="id">Sort by ID</option>
-              <option value="timestamp">Sort by Date</option>
-              <option value="amount">Sort by Amount</option>
+              <option value="id">
+                Sort by ID
+              </option>
+
+              <option value="timestamp">
+                Sort by Date
+              </option>
+
+              <option value="amount">
+                Sort by Amount
+              </option>
+
               <option value="merchant">
                 Sort by Merchant
               </option>
@@ -534,8 +759,13 @@ function App() {
               value={sortOrder}
               onChange={handleSortOrderChange}
             >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
+              <option value="asc">
+                Ascending
+              </option>
+
+              <option value="desc">
+                Descending
+              </option>
             </select>
           </div>
 
@@ -565,53 +795,66 @@ function App() {
                 </thead>
 
                 <tbody>
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id}>
-                      <td>#{transaction.id}</td>
+                  {transactions.map(
+                    (transaction) => (
+                      <tr key={transaction.id}>
+                        <td>
+                          #{transaction.id}
+                        </td>
 
-                      <td className="transaction-id">
-                        {transaction.transaction_id}
-                      </td>
+                        <td className="transaction-id">
+                          {transaction.transaction_id}
+                        </td>
 
-                      <td>
-                        {new Date(
-                          transaction.timestamp
-                        ).toLocaleString("en-IN", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                      </td>
+                        <td>
+                          {new Date(
+                            transaction.timestamp
+                          ).toLocaleString(
+                            "en-IN",
+                            {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            }
+                          )}
+                        </td>
 
-                      <td className="merchant-name">
-                        {transaction.merchant}
-                      </td>
+                        <td className="merchant-name">
+                          {transaction.merchant}
+                        </td>
 
-                      <td>
-                        {transaction.category || (
-                          <span className="muted">
-                            Uncategorized
+                        <td>
+                          {transaction.category || (
+                            <span className="muted">
+                              Uncategorized
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="amount">
+                          {formatCurrency(
+                            transaction.amount
+                          )}
+                        </td>
+
+                        <td>
+                          <StatusBadge
+                            status={
+                              transaction.status
+                            }
+                          />
+                        </td>
+
+                        <td>
+                          <span className="payment-method">
+                            <CreditCard size={15} />
+                            {
+                              transaction.payment_method
+                            }
                           </span>
-                        )}
-                      </td>
-
-                      <td className="amount">
-                        {formatCurrency(transaction.amount)}
-                      </td>
-
-                      <td>
-                        <StatusBadge
-                          status={transaction.status}
-                        />
-                      </td>
-
-                      <td>
-                        <span className="payment-method">
-                          <CreditCard size={15} />
-                          {transaction.payment_method}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             )}
@@ -628,7 +871,9 @@ function App() {
                 type="button"
                 disabled={page <= 1}
                 onClick={() =>
-                  setPage((current) => current - 1)
+                  setPage(
+                    (current) => current - 1
+                  )
                 }
               >
                 Previous
@@ -641,7 +886,9 @@ function App() {
                   page >= totalPages
                 }
                 onClick={() =>
-                  setPage((current) => current + 1)
+                  setPage(
+                    (current) => current + 1
+                  )
                 }
               >
                 Next
@@ -650,6 +897,85 @@ function App() {
           </div>
         </section>
       </main>
+
+      {/* Redemption Confirmation Modal */}
+      {selectedReward && (
+        <div
+          className="modal-backdrop"
+          onClick={() =>
+            setSelectedReward(null)
+          }
+        >
+          <div
+            className="redeem-modal"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="modal-icon">
+              <Gift size={25} />
+            </div>
+
+            <h3>
+              Redeem {selectedReward.name}?
+            </h3>
+
+            <p>
+              You are about to spend{" "}
+              <strong>
+                {selectedReward.coin_cost.toLocaleString(
+                  "en-IN"
+                )}{" "}
+                coins
+              </strong>
+              .
+            </p>
+
+            <div className="modal-balance">
+              <span>Current balance</span>
+              <strong>
+                {(
+                  rewardBalance?.balance || 0
+                ).toLocaleString("en-IN")}{" "}
+                coins
+              </strong>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-cancel"
+                onClick={() =>
+                  setSelectedReward(null)
+                }
+                disabled={redeemingReward !== null}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="modal-confirm"
+                onClick={() =>
+                  redeemReward(
+                    selectedReward.id
+                  )
+                }
+                disabled={
+                  redeemingReward !== null ||
+                  (rewardBalance?.balance || 0) <
+                    selectedReward.coin_cost
+                }
+              >
+                {redeemingReward ===
+                selectedReward.id
+                  ? "Redeeming..."
+                  : "Confirm Redemption"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -673,7 +999,8 @@ function StatCard({
 }
 
 function StatusBadge({ status }) {
-  const normalizedStatus = status?.toUpperCase();
+  const normalizedStatus =
+    status?.toUpperCase();
 
   return (
     <span
