@@ -9,12 +9,15 @@ import {
   XCircle,
   Gift,
   Coins,
+  X,
 } from "lucide-react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -47,9 +50,10 @@ function App() {
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
-
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
 
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState("asc");
@@ -57,7 +61,10 @@ function App() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  // Rewards
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [loadingTransactionDetail, setLoadingTransactionDetail] =
+    useState(false);
+
   const [rewards, setRewards] = useState([]);
   const [rewardBalance, setRewardBalance] = useState(null);
   const [loadingRewards, setLoadingRewards] = useState(true);
@@ -82,6 +89,8 @@ function App() {
     paymentMethod,
     dateFrom,
     dateTo,
+    minAmount,
+    maxAmount,
     sortBy,
     sortOrder,
   ]);
@@ -116,21 +125,10 @@ function App() {
         sort_order: sortOrder,
       };
 
-      if (search.trim()) {
-        params.search = search.trim();
-      }
-
-      if (category) {
-        params.category = category;
-      }
-
-      if (status) {
-        params.status = status;
-      }
-
-      if (paymentMethod) {
-        params.payment_method = paymentMethod;
-      }
+      if (search.trim()) params.search = search.trim();
+      if (category) params.category = category;
+      if (status) params.status = status;
+      if (paymentMethod) params.payment_method = paymentMethod;
 
       if (dateFrom) {
         params.date_from = `${dateFrom}T00:00:00`;
@@ -140,21 +138,48 @@ function App() {
         params.date_to = `${dateTo}T23:59:59`;
       }
 
+      if (minAmount !== "") {
+        params.min_amount = minAmount;
+      }
+
+      if (maxAmount !== "") {
+        params.max_amount = maxAmount;
+      }
+
       const response = await axios.get(
         `${API_BASE_URL}/api/transactions`,
-        {
-          params,
-        }
+        { params }
       );
 
-      setTransactions(response.data.items);
-      setTotal(response.data.total);
-      setTotalPages(response.data.total_pages);
+      setTransactions(response.data.items || []);
+      setTotal(response.data.total || 0);
+      setTotalPages(response.data.total_pages || 0);
     } catch (err) {
       console.error(err);
-      setError("Unable to load transactions.");
+      setError(
+        err.response?.data?.detail || "Unable to load transactions."
+      );
     } finally {
       setLoadingTransactions(false);
+    }
+  }
+
+  async function openTransactionDetail(transaction) {
+    try {
+      setLoadingTransactionDetail(true);
+
+      const response = await axios.get(
+        `${API_BASE_URL}/api/transactions/${transaction.id}`
+      );
+
+      setSelectedTransaction(response.data);
+    } catch (err) {
+      console.error(err);
+
+      setSelectedTransaction(transaction);
+      setError("Unable to load full transaction details.");
+    } finally {
+      setLoadingTransactionDetail(false);
     }
   }
 
@@ -206,11 +231,10 @@ function App() {
     } catch (err) {
       console.error(err);
 
-      const message =
+      setRewardError(
         err.response?.data?.detail ||
-        "Unable to redeem this reward.";
-
-      setRewardError(message);
+          "Unable to redeem this reward."
+      );
     } finally {
       setRedeemingReward(null);
     }
@@ -238,6 +262,13 @@ function App() {
     setPage(1);
   }
 
+  function handleAmountChange(setter) {
+    return (event) => {
+      setter(event.target.value);
+      setPage(1);
+    };
+  }
+
   function handleSortChange(event) {
     setSortBy(event.target.value);
     setPage(1);
@@ -255,9 +286,35 @@ function App() {
     setPaymentMethod("");
     setDateFrom("");
     setDateTo("");
+    setMinAmount("");
+    setMaxAmount("");
     setSortBy("id");
     setSortOrder("asc");
     setPage(1);
+  }
+
+  function filterByCategory(selectedCategory) {
+    setCategory(selectedCategory);
+    setPage(1);
+
+    document
+      .querySelector(".transactions-card")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  }
+
+  function filterByPaymentMethod(selectedMethod) {
+    setPaymentMethod(selectedMethod);
+    setPage(1);
+
+    document
+      .querySelector(".transactions-card")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
   }
 
   const categories = [
@@ -280,6 +337,22 @@ function App() {
     "UPI",
   ];
 
+  const monthlyTrend =
+    summary?.monthly_trend ||
+    summary?.monthly_spending ||
+    summary?.monthly_breakdown ||
+    [];
+
+  const normalizedMonthlyTrend = monthlyTrend.map((item) => ({
+    month: item.month || item.label || item.period,
+    amount: Number(
+      item.amount ||
+        item.total_amount ||
+        item.spending ||
+        0
+    ),
+  }));
+
   return (
     <div className="app">
       <header className="topbar">
@@ -289,7 +362,8 @@ function App() {
           <h1>Transactions Dashboard</h1>
 
           <p className="subtitle">
-            Monitor transactions, spending patterns and payment activity.
+            Monitor transactions, spending patterns and
+            payment activity.
           </p>
         </div>
 
@@ -300,16 +374,21 @@ function App() {
       </header>
 
       <main className="container">
-        {error && <div className="error-banner">{error}</div>}
+        {error && (
+          <div className="error-banner">
+            {error}
+          </div>
+        )}
 
-        {/* Summary Cards */}
         <section className="stats-grid">
           <StatCard
             title="Total Transactions"
             value={
               loadingSummary
                 ? "..."
-                : summary?.total_transactions?.toLocaleString("en-IN")
+                : summary?.total_transactions?.toLocaleString(
+                    "en-IN"
+                  )
             }
             icon={<BarChart3 size={21} />}
           />
@@ -329,7 +408,9 @@ function App() {
             value={
               loadingSummary
                 ? "..."
-                : summary?.successful_transactions?.toLocaleString("en-IN")
+                : summary?.successful_transactions?.toLocaleString(
+                    "en-IN"
+                  )
             }
             icon={<CheckCircle2 size={21} />}
             variant="success"
@@ -340,7 +421,9 @@ function App() {
             value={
               loadingSummary
                 ? "..."
-                : summary?.failed_transactions?.toLocaleString("en-IN")
+                : summary?.failed_transactions?.toLocaleString(
+                    "en-IN"
+                  )
             }
             icon={<XCircle size={21} />}
             variant="danger"
@@ -351,14 +434,15 @@ function App() {
             value={
               loadingSummary
                 ? "..."
-                : summary?.pending_transactions?.toLocaleString("en-IN")
+                : summary?.pending_transactions?.toLocaleString(
+                    "en-IN"
+                  )
             }
             icon={<Clock3 size={21} />}
             variant="warning"
           />
         </section>
 
-        {/* Rewards */}
         <section className="card rewards-card">
           <div className="card-heading rewards-heading">
             <div>
@@ -366,6 +450,7 @@ function App() {
                 <Gift size={20} />
                 Rewards
               </h2>
+
               <p>
                 Redeem your earned coins for rewards.
               </p>
@@ -436,6 +521,7 @@ function App() {
 
                       <div className="reward-cost">
                         <Coins size={15} />
+
                         {reward.coin_cost.toLocaleString(
                           "en-IN"
                         )}{" "}
@@ -456,8 +542,8 @@ function App() {
                       {isRedeeming
                         ? "Redeeming..."
                         : canRedeem
-                          ? "Redeem"
-                          : "Not enough coins"}
+                        ? "Redeem"
+                        : "Not enough coins"}
                     </button>
                   </div>
                 );
@@ -466,13 +552,16 @@ function App() {
           </div>
         </section>
 
-        {/* Charts */}
         <section className="charts-grid">
           <div className="card chart-card">
             <div className="card-heading">
               <div>
                 <h2>Spending by Category</h2>
-                <p>Transaction amount by category</p>
+
+                <p>
+                  Click a category to filter
+                  transactions.
+                </p>
               </div>
             </div>
 
@@ -482,13 +571,18 @@ function App() {
                   Loading chart...
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
                   <BarChart
                     data={
                       summary?.category_breakdown || []
                     }
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                    />
 
                     <XAxis
                       dataKey="category"
@@ -500,7 +594,9 @@ function App() {
 
                     <YAxis
                       tickFormatter={(value) =>
-                        `₹${(value / 100000).toFixed(0)}L`
+                        `₹${(
+                          value / 100000
+                        ).toFixed(0)}L`
                       }
                     />
 
@@ -515,6 +611,13 @@ function App() {
                       name="Amount"
                       fill="#2563eb"
                       radius={[5, 5, 0, 0]}
+                      cursor="pointer"
+                      onClick={(data) =>
+                        data?.category &&
+                        filterByCategory(
+                          data.category
+                        )
+                      }
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -526,8 +629,10 @@ function App() {
             <div className="card-heading">
               <div>
                 <h2>Payment Methods</h2>
+
                 <p>
-                  Transaction activity by payment method
+                  Click a method to filter
+                  transactions.
                 </p>
               </div>
             </div>
@@ -538,14 +643,19 @@ function App() {
                   Loading chart...
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
                   <BarChart
                     data={
                       summary?.payment_method_breakdown ||
                       []
                     }
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                    />
 
                     <XAxis dataKey="payment_method" />
 
@@ -569,21 +679,89 @@ function App() {
                       name="Transactions"
                       fill="#0f766e"
                       radius={[5, 5, 0, 0]}
+                      cursor="pointer"
+                      onClick={(data) =>
+                        data?.payment_method &&
+                        filterByPaymentMethod(
+                          data.payment_method
+                        )
+                      }
                     />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
           </div>
+
+          <div className="card chart-card">
+            <div className="card-heading">
+              <div>
+                <h2>Monthly Spending Trend</h2>
+
+                <p>
+                  Spending over time.
+                </p>
+              </div>
+            </div>
+
+            <div className="chart-container">
+              {normalizedMonthlyTrend.length ===
+              0 ? (
+                <div className="empty-state">
+                  Monthly trend data is not
+                  available from the summary API.
+                </div>
+              ) : (
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <LineChart
+                    data={normalizedMonthlyTrend}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                    />
+
+                    <XAxis dataKey="month" />
+
+                    <YAxis
+                      tickFormatter={(value) =>
+                        `₹${(
+                          value / 100000
+                        ).toFixed(0)}L`
+                      }
+                    />
+
+                    <Tooltip
+                      formatter={(value) =>
+                        formatCurrency(value)
+                      }
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="amount"
+                      name="Spending"
+                      stroke="#2563eb"
+                      strokeWidth={3}
+                      dot={{ r: 4 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
         </section>
 
-        {/* Top Merchants */}
         <section className="card merchants-card">
           <div className="card-heading">
             <div>
               <h2>Top Merchants</h2>
+
               <p>
-                Merchants ranked by transaction activity
+                Merchants ranked by transaction
+                activity.
               </p>
             </div>
           </div>
@@ -629,15 +807,14 @@ function App() {
           </div>
         </section>
 
-        {/* Transactions */}
         <section className="card transactions-card">
           <div className="transactions-header">
             <div>
               <h2>Transactions</h2>
 
               <p>
-                {total.toLocaleString("en-IN")} matching
-                transactions
+                {total.toLocaleString("en-IN")}{" "}
+                matching transactions
               </p>
             </div>
 
@@ -650,7 +827,6 @@ function App() {
             </button>
           </div>
 
-          {/* Filters */}
           <div className="filters">
             <div className="search-box">
               <Search size={18} />
@@ -674,7 +850,10 @@ function App() {
               </option>
 
               {categories.map((item) => (
-                <option key={item} value={item}>
+                <option
+                  key={item}
+                  value={item}
+                >
                   {item}
                 </option>
               ))}
@@ -682,7 +861,9 @@ function App() {
 
             <select
               value={status}
-              onChange={handleFilterChange(setStatus)}
+              onChange={handleFilterChange(
+                setStatus
+              )}
             >
               <option value="">
                 All statuses
@@ -712,7 +893,10 @@ function App() {
               </option>
 
               {paymentMethods.map((item) => (
-                <option key={item} value={item}>
+                <option
+                  key={item}
+                  value={item}
+                >
                   {item}
                 </option>
               ))}
@@ -732,6 +916,32 @@ function App() {
               onChange={handleDateToChange}
               aria-label="End date"
               title="End date"
+            />
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Min amount"
+              value={minAmount}
+              onChange={handleAmountChange(
+                setMinAmount
+              )}
+              aria-label="Minimum amount"
+              title="Minimum amount"
+            />
+
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Max amount"
+              value={maxAmount}
+              onChange={handleAmountChange(
+                setMaxAmount
+              )}
+              aria-label="Maximum amount"
+              title="Maximum amount"
             />
 
             <select
@@ -757,7 +967,9 @@ function App() {
 
             <select
               value={sortOrder}
-              onChange={handleSortOrderChange}
+              onChange={
+                handleSortOrderChange
+              }
             >
               <option value="asc">
                 Ascending
@@ -769,7 +981,6 @@ function App() {
             </select>
           </div>
 
-          {/* Transaction Table */}
           <div className="table-wrapper">
             {loadingTransactions ? (
               <div className="loading table-loading">
@@ -797,13 +1008,24 @@ function App() {
                 <tbody>
                   {transactions.map(
                     (transaction) => (
-                      <tr key={transaction.id}>
+                      <tr
+                        key={transaction.id}
+                        className="transaction-row"
+                        onClick={() =>
+                          openTransactionDetail(
+                            transaction
+                          )
+                        }
+                        title="Click to view transaction details"
+                      >
                         <td>
                           #{transaction.id}
                         </td>
 
                         <td className="transaction-id">
-                          {transaction.transaction_id}
+                          {
+                            transaction.transaction_id
+                          }
                         </td>
 
                         <td>
@@ -847,6 +1069,7 @@ function App() {
                         <td>
                           <span className="payment-method">
                             <CreditCard size={15} />
+
                             {
                               transaction.payment_method
                             }
@@ -860,7 +1083,6 @@ function App() {
             )}
           </div>
 
-          {/* Pagination */}
           <div className="pagination">
             <span>
               Page {page} of {totalPages || 1}
@@ -898,7 +1120,161 @@ function App() {
         </section>
       </main>
 
-      {/* Redemption Confirmation Modal */}
+      {selectedTransaction && (
+        <div
+          className="modal-backdrop"
+          onClick={() =>
+            setSelectedTransaction(null)
+          }
+        >
+          <div
+            className="detail-modal"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="detail-modal-header">
+              <div>
+                <p className="eyebrow">
+                  TRANSACTION DETAILS
+                </p>
+
+                <h3>
+                  {selectedTransaction.transaction_id ||
+                    `Transaction #${selectedTransaction.id}`}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() =>
+                  setSelectedTransaction(null)
+                }
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {loadingTransactionDetail ? (
+              <div className="loading">
+                Loading details...
+              </div>
+            ) : (
+              <div className="detail-grid">
+                <DetailItem
+                  label="ID"
+                  value={`#${selectedTransaction.id}`}
+                />
+
+                <DetailItem
+                  label="Transaction ID"
+                  value={
+                    selectedTransaction.transaction_id
+                  }
+                />
+
+                <DetailItem
+                  label="Merchant"
+                  value={
+                    selectedTransaction.merchant
+                  }
+                />
+
+                <DetailItem
+                  label="Category"
+                  value={
+                    selectedTransaction.category ||
+                    "Uncategorized"
+                  }
+                />
+
+                <DetailItem
+                  label="Amount"
+                  value={formatCurrency(
+                    selectedTransaction.amount
+                  )}
+                />
+
+                <DetailItem
+                  label="Status"
+                  value={
+                    <StatusBadge
+                      status={
+                        selectedTransaction.status
+                      }
+                    />
+                  }
+                />
+
+                <DetailItem
+                  label="Payment Method"
+                  value={
+                    selectedTransaction.payment_method
+                  }
+                />
+
+                <DetailItem
+                  label="Date"
+                  value={
+                    selectedTransaction.timestamp
+                      ? new Date(
+                          selectedTransaction.timestamp
+                        ).toLocaleString(
+                          "en-IN",
+                          {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          }
+                        )
+                      : "—"
+                  }
+                />
+
+                {Object.entries(
+                  selectedTransaction
+                )
+                  .filter(
+                    ([key]) =>
+                      ![
+                        "id",
+                        "transaction_id",
+                        "merchant",
+                        "category",
+                        "amount",
+                        "status",
+                        "payment_method",
+                        "timestamp",
+                      ].includes(key)
+                  )
+                  .map(
+                    ([key, value]) => (
+                      <DetailItem
+                        key={key}
+                        label={key.replaceAll(
+                          "_",
+                          " "
+                        )}
+                        value={
+                          typeof value ===
+                          "object"
+                            ? JSON.stringify(
+                                value
+                              )
+                            : String(
+                                value ?? "—"
+                              )
+                        }
+                      />
+                    )
+                  )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {selectedReward && (
         <div
           className="modal-backdrop"
@@ -933,10 +1309,13 @@ function App() {
 
             <div className="modal-balance">
               <span>Current balance</span>
+
               <strong>
                 {(
                   rewardBalance?.balance || 0
-                ).toLocaleString("en-IN")}{" "}
+                ).toLocaleString(
+                  "en-IN"
+                )}{" "}
                 coins
               </strong>
             </div>
@@ -948,7 +1327,9 @@ function App() {
                 onClick={() =>
                   setSelectedReward(null)
                 }
-                disabled={redeemingReward !== null}
+                disabled={
+                  redeemingReward !== null
+                }
               >
                 Cancel
               </button>
@@ -980,6 +1361,15 @@ function App() {
   );
 }
 
+function DetailItem({ label, value }) {
+  return (
+    <div className="detail-item">
+      <span>{label}</span>
+      <strong>{value || "—"}</strong>
+    </div>
+  );
+}
+
 function StatCard({
   title,
   value,
@@ -987,8 +1377,12 @@ function StatCard({
   variant = "",
 }) {
   return (
-    <div className={`stat-card ${variant}`}>
-      <div className="stat-icon">{icon}</div>
+    <div
+      className={`stat-card ${variant}`}
+    >
+      <div className="stat-icon">
+        {icon}
+      </div>
 
       <div>
         <p>{title}</p>
