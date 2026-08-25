@@ -26,7 +26,7 @@ import {
 import axios from "axios";
 import "./App.css";
 
-const API_BASE_URL = "https://digital-alpha-api-chmw.onrender.com";
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-IN", {
