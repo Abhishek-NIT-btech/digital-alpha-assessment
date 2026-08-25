@@ -1,6 +1,6 @@
 # Digital Alpha Assessment
 
-A full-stack transaction dashboard built with React, Vite, FastAPI, and SQLite.
+A full-stack transaction dashboard built with React, Vite, FastAPI, and PostgreSQL.
 
 ## Features
 
