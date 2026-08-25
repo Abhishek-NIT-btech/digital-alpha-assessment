@@ -40,10 +40,16 @@ function App() {
 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
+
+  // Date filters
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   const [sortBy, setSortBy] = useState("id");
   const [sortOrder, setSortOrder] = useState("asc");
 
@@ -62,6 +68,8 @@ function App() {
     category,
     status,
     paymentMethod,
+    dateFrom,
+    dateTo,
     sortBy,
     sortOrder,
   ]);
@@ -69,6 +77,7 @@ function App() {
   async function loadSummary() {
     try {
       setLoadingSummary(true);
+      setError("");
 
       const response = await axios.get(
         `${API_BASE_URL}/api/transactions/summary`
@@ -76,6 +85,7 @@ function App() {
 
       setSummary(response.data);
     } catch (err) {
+      console.error(err);
       setError("Unable to load transaction summary.");
     } finally {
       setLoadingSummary(false);
@@ -85,6 +95,7 @@ function App() {
   async function loadTransactions() {
     try {
       setLoadingTransactions(true);
+      setError("");
 
       const params = {
         page,
@@ -93,20 +104,42 @@ function App() {
         sort_order: sortOrder,
       };
 
-      if (search.trim()) params.search = search.trim();
-      if (category) params.category = category;
-      if (status) params.status = status;
-      if (paymentMethod) params.payment_method = paymentMethod;
+      if (search.trim()) {
+        params.search = search.trim();
+      }
+
+      if (category) {
+        params.category = category;
+      }
+
+      if (status) {
+        params.status = status;
+      }
+
+      if (paymentMethod) {
+        params.payment_method = paymentMethod;
+      }
+
+      if (dateFrom) {
+        params.date_from = `${dateFrom}T00:00:00`;
+      }
+
+      if (dateTo) {
+        params.date_to = `${dateTo}T23:59:59`;
+      }
 
       const response = await axios.get(
         `${API_BASE_URL}/api/transactions`,
-        { params }
+        {
+          params,
+        }
       );
 
       setTransactions(response.data.items);
       setTotal(response.data.total);
       setTotalPages(response.data.total_pages);
     } catch (err) {
+      console.error(err);
       setError("Unable to load transactions.");
     } finally {
       setLoadingTransactions(false);
@@ -125,6 +158,16 @@ function App() {
     };
   }
 
+  function handleDateFromChange(event) {
+    setDateFrom(event.target.value);
+    setPage(1);
+  }
+
+  function handleDateToChange(event) {
+    setDateTo(event.target.value);
+    setPage(1);
+  }
+
   function handleSortChange(event) {
     setSortBy(event.target.value);
     setPage(1);
@@ -140,6 +183,8 @@ function App() {
     setCategory("");
     setStatus("");
     setPaymentMethod("");
+    setDateFrom("");
+    setDateTo("");
     setSortBy("id");
     setSortOrder("asc");
     setPage(1);
@@ -170,7 +215,9 @@ function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">DIGITAL ALPHA</p>
+
           <h1>Transactions Dashboard</h1>
+
           <p className="subtitle">
             Monitor transactions, spending patterns and payment activity.
           </p>
@@ -185,6 +232,7 @@ function App() {
       <main className="container">
         {error && <div className="error-banner">{error}</div>}
 
+        {/* Summary Cards */}
         <section className="stats-grid">
           <StatCard
             title="Total Transactions"
@@ -240,6 +288,7 @@ function App() {
           />
         </section>
 
+        {/* Charts */}
         <section className="charts-grid">
           <div className="card chart-card">
             <div className="card-heading">
@@ -254,8 +303,11 @@ function App() {
                 <div className="loading">Loading chart...</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={summary?.category_breakdown || []}>
+                  <BarChart
+                    data={summary?.category_breakdown || []}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
+
                     <XAxis
                       dataKey="category"
                       angle={-30}
@@ -263,14 +315,19 @@ function App() {
                       height={80}
                       tick={{ fontSize: 11 }}
                     />
+
                     <YAxis
                       tickFormatter={(value) =>
                         `₹${(value / 100000).toFixed(0)}L`
                       }
                     />
+
                     <Tooltip
-                      formatter={(value) => formatCurrency(value)}
+                      formatter={(value) =>
+                        formatCurrency(value)
+                      }
                     />
+
                     <Bar
                       dataKey="amount"
                       name="Amount"
@@ -296,19 +353,28 @@ function App() {
                 <div className="loading">Loading chart...</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={summary?.payment_method_breakdown || []}>
+                  <BarChart
+                    data={summary?.payment_method_breakdown || []}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
+
                     <XAxis dataKey="payment_method" />
+
                     <YAxis />
+
                     <Tooltip
                       formatter={(value, name) => [
                         name === "amount"
                           ? formatCurrency(value)
                           : value,
-                        name === "amount" ? "Amount" : "Transactions",
+                        name === "amount"
+                          ? "Amount"
+                          : "Transactions",
                       ]}
                     />
+
                     <Legend />
+
                     <Bar
                       dataKey="count"
                       name="Transactions"
@@ -322,6 +388,7 @@ function App() {
           </div>
         </section>
 
+        {/* Top Merchants */}
         <section className="card merchants-card">
           <div className="card-heading">
             <div>
@@ -335,29 +402,41 @@ function App() {
               <div className="loading">Loading merchants...</div>
             ) : (
               summary?.top_merchants?.map((merchant, index) => (
-                <div className="merchant-item" key={merchant.merchant}>
-                  <div className="merchant-rank">{index + 1}</div>
+                <div
+                  className="merchant-item"
+                  key={merchant.merchant}
+                >
+                  <div className="merchant-rank">
+                    {index + 1}
+                  </div>
 
                   <div className="merchant-info">
                     <strong>{merchant.merchant}</strong>
+
                     <span>
-                      {merchant.count.toLocaleString("en-IN")} transactions
+                      {merchant.count.toLocaleString("en-IN")}{" "}
+                      transactions
                     </span>
                   </div>
 
-                  <strong>{formatCurrency(merchant.amount)}</strong>
+                  <strong>
+                    {formatCurrency(merchant.amount)}
+                  </strong>
                 </div>
               ))
             )}
           </div>
         </section>
 
+        {/* Transactions */}
         <section className="card transactions-card">
           <div className="transactions-header">
             <div>
               <h2>Transactions</h2>
+
               <p>
-                {total.toLocaleString("en-IN")} matching transactions
+                {total.toLocaleString("en-IN")} matching
+                transactions
               </p>
             </div>
 
@@ -370,9 +449,11 @@ function App() {
             </button>
           </div>
 
+          {/* Filters */}
           <div className="filters">
             <div className="search-box">
               <Search size={18} />
+
               <input
                 type="text"
                 placeholder="Search merchant..."
@@ -386,6 +467,7 @@ function App() {
               onChange={handleFilterChange(setCategory)}
             >
               <option value="">All categories</option>
+
               {categories.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -407,7 +489,10 @@ function App() {
               value={paymentMethod}
               onChange={handleFilterChange(setPaymentMethod)}
             >
-              <option value="">All payment methods</option>
+              <option value="">
+                All payment methods
+              </option>
+
               {paymentMethods.map((item) => (
                 <option key={item} value={item}>
                   {item}
@@ -415,11 +500,34 @@ function App() {
               ))}
             </select>
 
-            <select value={sortBy} onChange={handleSortChange}>
+            {/* Date From */}
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={handleDateFromChange}
+              aria-label="Start date"
+              title="Start date"
+            />
+
+            {/* Date To */}
+            <input
+              type="date"
+              value={dateTo}
+              onChange={handleDateToChange}
+              aria-label="End date"
+              title="End date"
+            />
+
+            <select
+              value={sortBy}
+              onChange={handleSortChange}
+            >
               <option value="id">Sort by ID</option>
               <option value="timestamp">Sort by Date</option>
               <option value="amount">Sort by Amount</option>
-              <option value="merchant">Sort by Merchant</option>
+              <option value="merchant">
+                Sort by Merchant
+              </option>
             </select>
 
             <select
@@ -431,6 +539,7 @@ function App() {
             </select>
           </div>
 
+          {/* Transaction Table */}
           <div className="table-wrapper">
             {loadingTransactions ? (
               <div className="loading table-loading">
@@ -459,9 +568,11 @@ function App() {
                   {transactions.map((transaction) => (
                     <tr key={transaction.id}>
                       <td>#{transaction.id}</td>
+
                       <td className="transaction-id">
                         {transaction.transaction_id}
                       </td>
+
                       <td>
                         {new Date(
                           transaction.timestamp
@@ -470,20 +581,29 @@ function App() {
                           timeStyle: "short",
                         })}
                       </td>
+
                       <td className="merchant-name">
                         {transaction.merchant}
                       </td>
+
                       <td>
                         {transaction.category || (
-                          <span className="muted">Uncategorized</span>
+                          <span className="muted">
+                            Uncategorized
+                          </span>
                         )}
                       </td>
+
                       <td className="amount">
                         {formatCurrency(transaction.amount)}
                       </td>
+
                       <td>
-                        <StatusBadge status={transaction.status} />
+                        <StatusBadge
+                          status={transaction.status}
+                        />
                       </td>
+
                       <td>
                         <span className="payment-method">
                           <CreditCard size={15} />
@@ -497,6 +617,7 @@ function App() {
             )}
           </div>
 
+          {/* Pagination */}
           <div className="pagination">
             <span>
               Page {page} of {totalPages || 1}
@@ -506,15 +627,22 @@ function App() {
               <button
                 type="button"
                 disabled={page <= 1}
-                onClick={() => setPage((current) => current - 1)}
+                onClick={() =>
+                  setPage((current) => current - 1)
+                }
               >
                 Previous
               </button>
 
               <button
                 type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage((current) => current + 1)}
+                disabled={
+                  totalPages === 0 ||
+                  page >= totalPages
+                }
+                onClick={() =>
+                  setPage((current) => current + 1)
+                }
               >
                 Next
               </button>
@@ -526,7 +654,12 @@ function App() {
   );
 }
 
-function StatCard({ title, value, icon, variant = "" }) {
+function StatCard({
+  title,
+  value,
+  icon,
+  variant = "",
+}) {
   return (
     <div className={`stat-card ${variant}`}>
       <div className="stat-icon">{icon}</div>
@@ -540,11 +673,13 @@ function StatCard({ title, value, icon, variant = "" }) {
 }
 
 function StatusBadge({ status }) {
-  const normalized = status?.toUpperCase();
+  const normalizedStatus = status?.toUpperCase();
 
   return (
-    <span className={`status-badge ${normalized?.toLowerCase()}`}>
-      {normalized}
+    <span
+      className={`status-badge ${normalizedStatus?.toLowerCase()}`}
+    >
+      {normalizedStatus}
     </span>
   );
 }

@@ -77,6 +77,14 @@ def get_transactions(
     payment_method: Optional[str] = Query(
         default=None,
     ),
+    amount_min: Optional[Decimal] = Query(
+        default=None,
+        ge=0,
+    ),
+    amount_max: Optional[Decimal] = Query(
+        default=None,
+        ge=0,
+    ),
     date_from: Optional[datetime] = Query(
         default=None,
     ),
@@ -129,6 +137,24 @@ def get_transactions(
     if payment_method:
         query = query.filter(
             Transaction.payment_method == payment_method
+        )
+
+    # -----------------------------
+    # Filter by minimum amount
+    # -----------------------------
+
+    if amount_min is not None:
+        query = query.filter(
+            Transaction.amount >= amount_min
+        )
+
+    # -----------------------------
+    # Filter by maximum amount
+    # -----------------------------
+
+    if amount_max is not None:
+        query = query.filter(
+            Transaction.amount <= amount_max
         )
 
     # -----------------------------
