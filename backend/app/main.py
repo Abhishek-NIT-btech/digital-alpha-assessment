@@ -27,9 +27,9 @@ app = FastAPI(
 )
 
 
-# -----------------------------
-# CORS configuration
-# -----------------------------
+# ============================================================
+# CORS
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,16 +57,16 @@ app.add_middleware(
 )
 
 
-# -----------------------------
-# Create reward tables
-# -----------------------------
+# ============================================================
+# DATABASE TABLES
+# ============================================================
 
 Base.metadata.create_all(bind=engine)
 
 
-# -----------------------------
-# Health check
-# -----------------------------
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/health")
 def health_check():
@@ -75,9 +75,9 @@ def health_check():
     }
 
 
-# -----------------------------
-# Get transactions
-# -----------------------------
+# ============================================================
+# TRANSACTIONS
+# ============================================================
 
 @app.get(
     "/api/transactions",
@@ -127,6 +127,10 @@ def get_transactions(
     ),
     db: Session = Depends(get_db),
 ):
+    # --------------------------------------------------------
+    # Validate amount range
+    # --------------------------------------------------------
+
     if (
         min_amount is not None
         and max_amount is not None
@@ -136,6 +140,10 @@ def get_transactions(
             status_code=400,
             detail="min_amount cannot be greater than max_amount.",
         )
+
+    # --------------------------------------------------------
+    # Validate date range
+    # --------------------------------------------------------
 
     if (
         date_from is not None
@@ -147,9 +155,16 @@ def get_transactions(
             detail="date_from cannot be later than date_to.",
         )
 
+    # --------------------------------------------------------
+    # Base query
+    # --------------------------------------------------------
+
     query = db.query(Transaction)
 
-    # Search
+    # --------------------------------------------------------
+    # Merchant search
+    # --------------------------------------------------------
+
     if search and search.strip():
         query = query.filter(
             Transaction.merchant.ilike(
@@ -157,25 +172,37 @@ def get_transactions(
             )
         )
 
-    # Category
+    # --------------------------------------------------------
+    # Category filter
+    # --------------------------------------------------------
+
     if category:
         query = query.filter(
             Transaction.category == category
         )
 
-    # Status
+    # --------------------------------------------------------
+    # Status filter
+    # --------------------------------------------------------
+
     if status:
         query = query.filter(
             Transaction.status == status.upper()
         )
 
-    # Payment method
+    # --------------------------------------------------------
+    # Payment method filter
+    # --------------------------------------------------------
+
     if payment_method:
         query = query.filter(
             Transaction.payment_method == payment_method
         )
 
-    # Date range
+    # --------------------------------------------------------
+    # Date range filters
+    # --------------------------------------------------------
+
     if date_from:
         query = query.filter(
             Transaction.timestamp >= date_from
@@ -186,7 +213,10 @@ def get_transactions(
             Transaction.timestamp <= date_to
         )
 
-    # Amount range
+    # --------------------------------------------------------
+    # Amount range filters
+    # --------------------------------------------------------
+
     if min_amount is not None:
         query = query.filter(
             Transaction.amount >= min_amount
@@ -197,7 +227,10 @@ def get_transactions(
             Transaction.amount <= max_amount
         )
 
+    # --------------------------------------------------------
     # Sorting
+    # --------------------------------------------------------
+
     allowed_sort_fields = {
         "id": Transaction.id,
         "timestamp": Transaction.timestamp,
@@ -218,7 +251,10 @@ def get_transactions(
             ),
         )
 
-    if sort_order.lower() not in {"asc", "desc"}:
+    if sort_order.lower() not in {
+        "asc",
+        "desc",
+    }:
         raise HTTPException(
             status_code=400,
             detail="sort_order must be asc or desc.",
@@ -233,10 +269,16 @@ def get_transactions(
             sort_column.asc()
         )
 
-    # Total
+    # --------------------------------------------------------
+    # Count matching records
+    # --------------------------------------------------------
+
     total = query.count()
 
+    # --------------------------------------------------------
     # Pagination
+    # --------------------------------------------------------
+
     offset = (page - 1) * page_size
 
     transactions = (
@@ -261,9 +303,9 @@ def get_transactions(
     }
 
 
-# -----------------------------
-# Transaction summary
-# -----------------------------
+# ============================================================
+# TRANSACTION SUMMARY / ANALYTICS
+# ============================================================
 
 @app.get(
     "/api/transactions/summary",
@@ -272,13 +314,21 @@ def get_transactions(
 def get_transaction_summary(
     db: Session = Depends(get_db),
 ):
+    # --------------------------------------------------------
+    # Overall transaction totals
+    # --------------------------------------------------------
+
     total_transactions = (
-        db.query(func.count(Transaction.id))
+        db.query(
+            func.count(Transaction.id)
+        )
         .scalar()
     )
 
     total_amount = (
-        db.query(func.sum(Transaction.amount))
+        db.query(
+            func.sum(Transaction.amount)
+        )
         .scalar()
     )
 
@@ -286,7 +336,9 @@ def get_transaction_summary(
         total_amount = Decimal("0.00")
 
     successful_transactions = (
-        db.query(func.count(Transaction.id))
+        db.query(
+            func.count(Transaction.id)
+        )
         .filter(
             Transaction.status == "SUCCESS"
         )
@@ -294,7 +346,9 @@ def get_transaction_summary(
     )
 
     failed_transactions = (
-        db.query(func.count(Transaction.id))
+        db.query(
+            func.count(Transaction.id)
+        )
         .filter(
             Transaction.status == "FAILED"
         )
@@ -302,12 +356,18 @@ def get_transaction_summary(
     )
 
     pending_transactions = (
-        db.query(func.count(Transaction.id))
+        db.query(
+            func.count(Transaction.id)
+        )
         .filter(
             Transaction.status == "PENDING"
         )
         .scalar()
     )
+
+    # --------------------------------------------------------
+    # Spending by category
+    # --------------------------------------------------------
 
     category_results = (
         db.query(
@@ -322,7 +382,9 @@ def get_transaction_summary(
             Transaction.category
         )
         .order_by(
-            func.sum(Transaction.amount).desc()
+            func.sum(
+                Transaction.amount
+            ).desc()
         )
         .all()
     )
@@ -333,8 +395,16 @@ def get_transaction_summary(
             "count": count,
             "amount": amount or Decimal("0.00"),
         }
-        for category, count, amount in category_results
+        for (
+            category,
+            count,
+            amount
+        ) in category_results
     ]
+
+    # --------------------------------------------------------
+    # Payment method breakdown
+    # --------------------------------------------------------
 
     payment_method_results = (
         db.query(
@@ -346,7 +416,9 @@ def get_transaction_summary(
             Transaction.payment_method
         )
         .order_by(
-            func.sum(Transaction.amount).desc()
+            func.sum(
+                Transaction.amount
+            ).desc()
         )
         .all()
     )
@@ -357,8 +429,16 @@ def get_transaction_summary(
             "count": count,
             "amount": amount or Decimal("0.00"),
         }
-        for payment_method, count, amount in payment_method_results
+        for (
+            payment_method,
+            count,
+            amount
+        ) in payment_method_results
     ]
+
+    # --------------------------------------------------------
+    # Top merchants
+    # --------------------------------------------------------
 
     merchant_results = (
         db.query(
@@ -370,7 +450,9 @@ def get_transaction_summary(
             Transaction.merchant
         )
         .order_by(
-            func.sum(Transaction.amount).desc()
+            func.sum(
+                Transaction.amount
+            ).desc()
         )
         .limit(10)
         .all()
@@ -382,8 +464,100 @@ def get_transaction_summary(
             "count": count,
             "amount": amount or Decimal("0.00"),
         }
-        for merchant, count, amount in merchant_results
+        for (
+            merchant,
+            count,
+            amount
+        ) in merchant_results
     ]
+
+    # --------------------------------------------------------
+    # MONTHLY SPENDING TREND
+    # --------------------------------------------------------
+    #
+    # IMPORTANT:
+    # Do NOT use date_trunc("month", timestamp) in the
+    # SELECT/GROUP BY combination here.
+    #
+    # PostgreSQL was previously returning:
+    #
+    #   column "transactions.timestamp" must appear
+    #   in the GROUP BY clause
+    #
+    # We avoid that problem by grouping explicitly by
+    # extracted year and month.
+    #
+    # Only successful payments are included in spending.
+    # --------------------------------------------------------
+
+    monthly_trend_rows = (
+        db.query(
+            func.extract(
+                "year",
+                Transaction.timestamp,
+            ).label("year"),
+            func.extract(
+                "month",
+                Transaction.timestamp,
+            ).label("month"),
+            func.count(
+                Transaction.id
+            ).label("count"),
+            func.sum(
+                Transaction.amount
+            ).label("amount"),
+        )
+        .filter(
+            Transaction.status == "SUCCESS"
+        )
+        .group_by(
+            func.extract(
+                "year",
+                Transaction.timestamp,
+            ),
+            func.extract(
+                "month",
+                Transaction.timestamp,
+            ),
+        )
+        .order_by(
+            func.extract(
+                "year",
+                Transaction.timestamp,
+            ).asc(),
+            func.extract(
+                "month",
+                Transaction.timestamp,
+            ).asc(),
+        )
+        .all()
+    )
+
+    monthly_trend = [
+        {
+            "month": (
+                f"{int(year):04d}-"
+                f"{int(month):02d}"
+            ),
+            "count": int(
+                count or 0
+            ),
+            "amount": (
+                amount
+                or Decimal("0.00")
+            ),
+        }
+        for (
+            year,
+            month,
+            count,
+            amount
+        ) in monthly_trend_rows
+    ]
+
+    # --------------------------------------------------------
+    # Return summary
+    # --------------------------------------------------------
 
     return {
         "total_transactions": total_transactions,
@@ -394,12 +568,13 @@ def get_transaction_summary(
         "category_breakdown": category_breakdown,
         "payment_method_breakdown": payment_method_breakdown,
         "top_merchants": top_merchants,
+        "monthly_trend": monthly_trend,
     }
 
 
-# -----------------------------
-# Transaction detail
-# -----------------------------
+# ============================================================
+# TRANSACTION DETAIL
+# ============================================================
 
 @app.get(
     "/api/transactions/{transaction_id}",
@@ -410,7 +585,9 @@ def get_transaction(
 ):
     transaction = (
         db.query(Transaction)
-        .filter(Transaction.id == transaction_id)
+        .filter(
+            Transaction.id == transaction_id
+        )
         .first()
     )
 
@@ -423,13 +600,13 @@ def get_transaction(
     return transaction
 
 
-# -----------------------------
-# Rewards
-# -----------------------------
+# ============================================================
+# REWARDS
+# ============================================================
 
-# Product assumption:
-# 1 coin is earned for every ₹100 of successful spending.
-# A maximum of 100 coins can be earned from one transaction.
+# One coin is earned for every ₹100 of successful spending.
+# Maximum 100 coins can be earned from one transaction.
+
 COINS_PER_HUNDRED_RUPEES = 1
 MAX_COINS_PER_TRANSACTION = 100
 
@@ -454,7 +631,9 @@ def get_earned_coins(
     db: Session,
 ) -> int:
     successful_transactions = (
-        db.query(Transaction.amount)
+        db.query(
+            Transaction.amount
+        )
         .filter(
             Transaction.status == "SUCCESS"
         )
@@ -462,8 +641,12 @@ def get_earned_coins(
     )
 
     return sum(
-        calculate_transaction_coins(amount)
-        for (amount,) in successful_transactions
+        calculate_transaction_coins(
+            amount
+        )
+        for (
+            amount,
+        ) in successful_transactions
     )
 
 
@@ -482,8 +665,14 @@ def get_redeemed_coins(
         .scalar()
     )
 
-    return int(total or 0)
+    return int(
+        total or 0
+    )
 
+
+# ============================================================
+# REWARD BALANCE
+# ============================================================
 
 @app.get(
     "/api/rewards/balance",
@@ -506,6 +695,10 @@ def get_reward_balance(
         "redeemed_coins": redeemed_coins,
     }
 
+
+# ============================================================
+# REWARD CATALOGUE
+# ============================================================
 
 @app.get(
     "/api/rewards",
@@ -530,6 +723,10 @@ def get_rewards(
     }
 
 
+# ============================================================
+# REDEEM REWARD
+# ============================================================
+
 @app.post(
     "/api/rewards/redeem",
     response_model=RewardRedeemResponse,
@@ -538,6 +735,10 @@ def redeem_reward(
     request: RewardRedeemRequest,
     db: Session = Depends(get_db),
 ):
+    # --------------------------------------------------------
+    # Find reward
+    # --------------------------------------------------------
+
     reward = (
         db.query(Reward)
         .filter(
@@ -553,6 +754,10 @@ def redeem_reward(
             detail="Reward not found.",
         )
 
+    # --------------------------------------------------------
+    # Calculate current balance
+    # --------------------------------------------------------
+
     earned_coins = get_earned_coins(db)
     redeemed_coins = get_redeemed_coins(db)
 
@@ -561,11 +766,19 @@ def redeem_reward(
         0,
     )
 
+    # --------------------------------------------------------
+    # Validate balance
+    # --------------------------------------------------------
+
     if current_balance < reward.coin_cost:
         raise HTTPException(
             status_code=400,
             detail="Insufficient coin balance.",
         )
+
+    # --------------------------------------------------------
+    # Create redemption
+    # --------------------------------------------------------
 
     redemption = RewardRedemption(
         reward_id=reward.id,
@@ -575,8 +788,13 @@ def redeem_reward(
     db.add(redemption)
     db.commit()
 
+    # --------------------------------------------------------
+    # Remaining balance
+    # --------------------------------------------------------
+
     remaining_balance = (
-        current_balance - reward.coin_cost
+        current_balance
+        - reward.coin_cost
     )
 
     return {

@@ -22,6 +22,12 @@ class MerchantSummary(BaseModel):
     amount: Decimal
 
 
+class MonthlyTrendSummary(BaseModel):
+    month: str
+    count: int
+    amount: Decimal
+
+
 class TransactionSummaryResponse(BaseModel):
     total_transactions: int
     total_amount: Decimal
@@ -33,3 +39,4 @@ class TransactionSummaryResponse(BaseModel):
     category_breakdown: List[CategorySummary]
     payment_method_breakdown: List[PaymentMethodSummary]
     top_merchants: List[MerchantSummary]
+    monthly_trend: List[MonthlyTrendSummary]
