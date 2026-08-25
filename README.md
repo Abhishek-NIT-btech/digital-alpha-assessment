@@ -1,6 +1,7 @@
 # Digital Alpha Assessment
+# Digital Alpha Assessment
 
-A full-stack transaction dashboard built with React, Vite, FastAPI, and PostgreSQL.
+A full-stack transaction dashboard with analytics and rewards, built with React, Vite, FastAPI, and PostgreSQL.
 
 ## Features
 
@@ -10,9 +11,16 @@ A full-stack transaction dashboard built with React, Vite, FastAPI, and PostgreS
 - Filter by category
 - Filter by transaction status
 - Filter by payment method
-- Sort transactions
-- Backend API with validation
-- SQLite-backed transaction data
+- Sort transactions by ID, date, amount, or merchant
+- Transaction detail endpoint
+- Spending by category analytics
+- Payment method analytics
+- Top merchant analytics
+- Rewards catalogue
+- Reward coin balance
+- Reward redemption functionality
+- PostgreSQL-backed transaction data
+- REST API with validation
 - Responsive frontend interface
 
 ## Project Structure
@@ -29,39 +37,3 @@ digital-alpha-assessment/
 │   ├── package.json
 │   └── vite.config.js
 └── README.md
-```
-
-## Backend
-
-```bash
-cd backend
-source venv/bin/activate
-uvicorn app.main:app --reload
-```
-
-Backend: http://127.0.0.1:8000
-
-## Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## Production Build
-
-```bash
-cd frontend
-npm run build
-```
-
-## API Endpoints
-
-```text
-GET /health
-GET /api/transactions
-GET /api/transactions/summary
-```
-
-The transactions endpoint supports pagination, searching, filtering, and sorting.
