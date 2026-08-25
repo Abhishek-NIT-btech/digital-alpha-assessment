@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, engine
 from app.reward import Reward, RewardRedemption
 from app.reward_schemas import (
     RewardBalanceResponse,
@@ -19,7 +19,6 @@ from app.reward_schemas import (
 from app.schemas import TransactionListResponse
 from app.summary_schemas import TransactionSummaryResponse
 from app.transaction import Base, Transaction
-from app.database import engine
 
 
 app = FastAPI(
@@ -37,6 +36,20 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+        "http://localhost:5176",
+        "http://127.0.0.1:5176",
+        "http://localhost:5177",
+        "http://127.0.0.1:5177",
+        "http://localhost:5178",
+        "http://127.0.0.1:5178",
+        "http://localhost:5179",
+        "http://127.0.0.1:5179",
+        "http://localhost:5180",
+        "http://127.0.0.1:5180",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -382,8 +395,6 @@ def get_transaction_summary(
         "payment_method_breakdown": payment_method_breakdown,
         "top_merchants": top_merchants,
     }
-
-
 
 
 # -----------------------------
